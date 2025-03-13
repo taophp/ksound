@@ -1,3 +1,4 @@
+use crate::config;
 use anyhow::Result;
 use rodio::{Decoder, OutputStream, Sink};
 use std::fs::File;
@@ -10,11 +11,14 @@ pub struct Player {
     _stream_handle: Option<rodio::OutputStreamHandle>,
     playlist: Vec<PathBuf>,
     current_index: usize,
+    current_playing: Option<PathBuf>,
+    skip_list: config::SkipList,
 }
 
 impl Player {
     pub fn new() -> Result<Self> {
         let (stream, stream_handle) = OutputStream::try_default()?;
+        let skip_list = config::SkipList::new()?;
 
         Ok(Player {
             sink: None,
@@ -22,12 +26,27 @@ impl Player {
             _stream_handle: Some(stream_handle),
             playlist: Vec::new(),
             current_index: 0,
+            current_playing: None,
+            skip_list,
         })
     }
 
-    pub fn set_playlist(&mut self, playlist: Vec<PathBuf>) {
-        self.playlist = playlist;
+    pub fn set_playlist(&mut self, playlist: Vec<PathBuf>) -> Result<()> {
+        self.playlist = self.filter_skipped_tracks(playlist)?;
         self.current_index = 0;
+        Ok(())
+    }
+
+    fn filter_skipped_tracks(&mut self, playlist: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+        let mut filtered = Vec::with_capacity(playlist.len());
+
+        for path in playlist {
+            if !self.skip_list.is_skipped(&path)? {
+                filtered.push(path);
+            }
+        }
+
+        Ok(filtered)
     }
 
     pub fn play_next(&mut self) -> Result<()> {
@@ -40,9 +59,11 @@ impl Player {
         }
 
         let path = self.playlist[self.current_index].clone();
-            println!("Playing: {:?}", path);
-            self.current_index += 1;
-            self.play_file(&path)
+        println!("Playing: {:?}", path);
+        self.play_file(&path)?;
+        self.current_playing = Some(path);
+        self.current_index = (self.current_index + 1) % self.playlist.len();
+        Ok(())
     }
 
     pub fn play_previous(&mut self) -> Result<()> {
@@ -50,7 +71,7 @@ impl Player {
             return Ok(());
         }
 
-        if self.current_index == 0 || self.current_index > self.playlist.len() {
+        if self.current_index == 0 {
             self.current_index = self.playlist.len().saturating_sub(1);
         } else {
             self.current_index = self.current_index.saturating_sub(1);
@@ -58,11 +79,13 @@ impl Player {
 
         let path = self.playlist[self.current_index].clone();
         println!("Playing: {:?}", path);
-        self.play_file(&path)
+        self.play_file(&path)?;
+        self.current_playing = Some(path);
+
+        Ok(())
     }
 
     pub fn play_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        // Implémentation basique pour tester
         if let Some(stream_handle) = &self._stream_handle {
             let file = File::open(path)?;
             let reader = BufReader::new(file);
@@ -88,18 +111,8 @@ impl Player {
         }
     }
 
-    pub fn stop(&self) {
-        if let Some(sink) = &self.sink {
-            sink.stop();
-        }
-    }
-
     pub fn get_current_track(&self) -> Option<&PathBuf> {
-        if self.playlist.is_empty() || self.current_index >= self.playlist.len() {
-            None
-        } else {
-            Some(&self.playlist[self.current_index])
-        }
+        self.current_playing.as_ref()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -118,9 +131,60 @@ impl Player {
             }
 
             self.play_next()?;
-            return Ok(true); // Continuer la lecture
+            return Ok(true);
         }
 
         Ok(true)
+    }
+
+    pub fn is_playing(&self) -> bool {
+        if let Some(sink) = &self.sink {
+            !sink.is_paused()
+        } else {
+            false
+        }
+    }
+
+    pub fn increase_volume(&self) {
+        if let Some(sink) = &self.sink {
+            let current_volume = sink.volume();
+            let new_volume = (current_volume + 0.1).min(2.0);
+            sink.set_volume(new_volume);
+            println!("Volume: {:.0}%", new_volume * 100.0);
+        }
+    }
+
+    pub fn decrease_volume(&self) {
+        if let Some(sink) = &self.sink {
+            let current_volume = sink.volume();
+            let new_volume = (current_volume - 0.1).max(0.0);
+            sink.set_volume(new_volume);
+            println!("Volume: {:.0}%", new_volume * 100.0);
+        }
+    }
+
+    pub fn mark_skip(&mut self) -> Result<()> {
+        if let Some(track) = &self.current_playing {
+            self.skip_list.add(track)?;
+            println!("Marked for skipping: {:?}", track);
+            self.remove_current_from_playlist();
+            self.play_next()?;
+        }
+        Ok(())
+    }
+
+    fn remove_current_from_playlist(&mut self) {
+        if let Some(current) = &self.current_playing {
+            // Trouver l'index du fichier en cours dans la playlist
+            if let Some(index) = self.playlist.iter().position(|path| path == current) {
+                // Supprimer de la playlist
+                self.playlist.remove(index);
+
+                // Ajuster l'index actuel si nécessaire
+                if index <= self.current_index && self.current_index > 0 {
+                    self.current_index -= 1;
+                }
+            }
+        }
     }
 }

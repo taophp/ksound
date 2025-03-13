@@ -4,10 +4,10 @@ mod ui;
 
 use anyhow::Result;
 use clap::Parser;
-use std::path::PathBuf;
-use walkdir::WalkDir;
 use rand::seq::SliceRandom;
 use std::fs;
+use std::path::PathBuf;
+use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -44,21 +44,67 @@ fn main() -> Result<()> {
     }
     println!("Found {} MP3 files", playlist.len());
 
+    let mut ui = ui::UI::new()?;
+
     if !playlist.is_empty() {
         let mut player = player::Player::new()?;
-        player.set_playlist(playlist);
+        player.set_playlist(playlist)?;
         player.play_next()?;
 
         println!("Playing playlist. Press Ctrl+C to exit");
+        let mut last_track = None;
+        let mut needs_redraw = true;
         loop {
-          let continue_playback = player.handle_playback()?;
+            if needs_redraw {
+                ui.draw(player.get_current_track())?;
+                needs_redraw = false;
+                last_track = player.get_current_track().cloned();
+            }
 
-          if !continue_playback {
-              println!("Playlist finished");
-              break;
-          }
+            if player.get_current_track() != last_track.as_ref() {
+                needs_redraw = true;
+            }
 
-          std::thread::sleep(std::time::Duration::from_millis(100));        }
+            match ui.handle_input()? {
+                ui::UserAction::Quit => break,
+                ui::UserAction::PlayPause => {
+                    if player.is_playing() {
+                        player.pause();
+                        ui.set_playing(false);
+                    } else {
+                        player.play();
+                        ui.set_playing(true);
+                    }
+                    needs_redraw = true;
+                }
+                ui::UserAction::Next => {
+                    player.play_next()?;
+                    needs_redraw = true;
+                }
+                ui::UserAction::Previous => {
+                    player.play_previous()?;
+                    needs_redraw = true;
+                }
+                ui::UserAction::VolumeUp => {
+                    player.increase_volume();
+                    needs_redraw = true;
+                }
+                ui::UserAction::VolumeDown => {
+                    player.decrease_volume();
+                    needs_redraw = true;
+                }
+                ui::UserAction::MarkSkip => {
+                    player.mark_skip()?;
+                    needs_redraw = true;
+                }
+                _ => {}
+            }
+
+            let continue_playback = player.handle_playback()?;
+            if !continue_playback {
+                break;
+            }
+        }
     } else {
         println!("No MP3 files found to play.");
     }
