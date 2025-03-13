@@ -1,15 +1,5 @@
 # KSound
 
-> A minimalist command-line MP3 player written in Rust. Navigate through your music within your terminal using your keyboard !
-
-** WORK IN PROGRESS **
-
-KSound est une application (écrite en RUST) de lecture de fichiers mp3 en ligne de commande qui permet à l'utilisateur d'interagir (supprimer, passer, marquer comme à éviter, marqué comme favori) pendant l'écoute simplement en appuyant sur les touches de son clavier.
-Complète le Readme.
-
-
-# KSound
-
 > A minimalist command-line MP3 player written in Rust. Navigate through your music within your terminal using your keyboard!
 
 **WORK IN PROGRESS**
