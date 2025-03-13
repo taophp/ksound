@@ -48,7 +48,7 @@ fn main() -> Result<()> {
 
     if !playlist.is_empty() {
         let mut player = player::Player::new()?;
-        player.set_playlist(playlist);
+        player.set_playlist(playlist)?;
         player.play_next()?;
 
         println!("Playing playlist. Press Ctrl+C to exit");
@@ -91,6 +91,10 @@ fn main() -> Result<()> {
                 }
                 ui::UserAction::VolumeDown => {
                     player.decrease_volume();
+                    needs_redraw = true;
+                }
+                ui::UserAction::MarkSkip => {
+                    player.mark_skip()?;
                     needs_redraw = true;
                 }
                 _ => {}
