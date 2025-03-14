@@ -15,12 +15,14 @@ pub struct Player {
     current_index: usize,
     current_playing: Option<PathBuf>,
     skip_list: config::SkipList,
+    favorites_list: config::FavoritesList,
 }
 
 impl Player {
     pub fn new() -> Result<Self> {
         let (stream, stream_handle) = OutputStream::try_default()?;
         let skip_list = config::SkipList::new()?;
+        let favorites_list = config::FavoritesList::new()?;
 
         Ok(Player {
             sink: None,
@@ -30,12 +32,36 @@ impl Player {
             current_index: 0,
             current_playing: None,
             skip_list,
+            favorites_list,
         })
     }
 
     pub fn set_playlist(&mut self, playlist: Vec<PathBuf>) -> Result<()> {
-        self.playlist = self.filter_skipped_tracks(playlist)?;
+        let mut filtered_playlist = self.filter_skipped_tracks(playlist)?;
+        filtered_playlist = self.add_favorites_twice(filtered_playlist)?;
+        self.playlist = filtered_playlist;
         self.current_index = 0;
+        Ok(())
+    }
+
+    fn add_favorites_twice(&mut self, playlist: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+        let mut extended_playlist = Vec::with_capacity(playlist.len() * 2);
+
+        for path in &playlist {
+            extended_playlist.push(path.clone());
+            if self.favorites_list.is_favorite(path)? {
+                extended_playlist.push(path.clone());
+            }
+        }
+
+        Ok(extended_playlist)
+    }
+
+    pub fn mark_favorite(&mut self) -> Result<()> {
+        if let Some(track) = &self.current_playing {
+            self.favorites_list.add(track)?;
+            println!("Marked as favorite: {:?}", track);
+        }
         Ok(())
     }
 
@@ -113,7 +139,7 @@ impl Player {
         }
     }
 
-    pub fn get_current_track(&self) -> Option<&PathBuf> {
+    pub fn get_current_track(&mut self) -> Option<&PathBuf> {
         self.current_playing.as_ref()
     }
 
@@ -197,5 +223,9 @@ impl Player {
             self.remove_current_from_playlist();
         }
         Ok(())
+    }
+
+    pub fn is_favorite(&mut self, track: &PathBuf) -> Result<bool, io::Error> {
+        self.favorites_list.is_favorite(track)
     }
 }

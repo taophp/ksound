@@ -51,14 +51,19 @@ fn main() -> Result<()> {
         player.set_playlist(playlist)?;
         player.play_next()?;
 
-        println!("Playing playlist. Press Ctrl+C to exit");
         let mut last_track = None;
         let mut needs_redraw = true;
         loop {
+            let current_track = player.get_current_track().cloned();
             if needs_redraw {
-                ui.draw(player.get_current_track())?;
+                let is_favorite = if let Some(ref track) = current_track {
+                    player.is_favorite(track)?
+                } else {
+                    false
+                };
+                ui.draw(current_track.as_ref(), is_favorite)?;
                 needs_redraw = false;
-                last_track = player.get_current_track().cloned();
+                last_track = current_track.clone();
             }
 
             if player.get_current_track() != last_track.as_ref() {
@@ -108,6 +113,10 @@ fn main() -> Result<()> {
                         }
                     }
                     needs_redraw = true;
+                }
+                ui::UserAction::MarkFavorite => {
+                    player.mark_favorite()?;
+                    ui.draw(current_track.as_ref(), true)?;
                 }
                 _ => {}
             }

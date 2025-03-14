@@ -38,7 +38,7 @@ impl UI {
         Ok(UI { playing: false })
     }
 
-    pub fn draw(&self, current_track: Option<&PathBuf>) -> Result<(), UiError> {
+    pub fn draw(&self, current_track: Option<&PathBuf>, is_favorite: bool) -> Result<(), UiError> {
         // Clear the screen
         execute!(
             io::stdout(),
@@ -75,11 +75,17 @@ impl UI {
             let track_str = track.display().to_string();
             let max_length = width as usize - 15; // "Now playing: " + margin
 
-            if track_str.len() > max_length {
-                let shortened = &track_str[..max_length.saturating_sub(3)];
+            let display_str = if is_favorite {
+                format!("★ {}", track_str) // Use a star symbol
+            } else {
+                track_str
+            };
+
+            if display_str.len() > max_length {
+                let shortened = &display_str[..max_length.saturating_sub(3)];
                 writeln!(stdout, "Now playing: {}...", shortened)?;
             } else {
-                writeln!(stdout, "Now playing: {}", track_str)?;
+                writeln!(stdout, "Now playing: {}", display_str)?;
             }
         } else {
             writeln!(stdout, "No track playing")?;
