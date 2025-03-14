@@ -97,6 +97,18 @@ fn main() -> Result<()> {
                     player.mark_skip()?;
                     needs_redraw = true;
                 }
+                ui::UserAction::Delete => {
+                    player.pause();
+                    if let Some(track) = player.get_current_track() {
+                        if ui.confirm_deletion(track)? {
+                            player.delete_current_track()?;
+                            player.play_next()?;
+                        } else {
+                            player.play();
+                        }
+                    }
+                    needs_redraw = true;
+                }
                 _ => {}
             }
 

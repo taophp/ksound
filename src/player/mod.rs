@@ -1,7 +1,9 @@
 use crate::config;
 use anyhow::Result;
 use rodio::{Decoder, OutputStream, Sink};
+use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
@@ -186,5 +188,14 @@ impl Player {
                 }
             }
         }
+    }
+
+    pub fn delete_current_track(&mut self) -> Result<(), io::Error> {
+        if let Some(track) = &self.current_playing {
+            fs::remove_file(track)?;
+            println!("Deleted: {:?}", track);
+            self.remove_current_from_playlist();
+        }
+        Ok(())
     }
 }

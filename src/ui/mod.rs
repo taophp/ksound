@@ -158,6 +158,32 @@ impl UI {
     pub fn set_playing(&mut self, playing: bool) {
         self.playing = playing;
     }
+
+    pub fn confirm_deletion(&self, track: &PathBuf) -> Result<bool, UiError> {
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            crossterm::cursor::MoveTo(0, 10),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::FromCursorDown)
+        )?;
+        writeln!(
+            stdout,
+            "Are you sure you want to delete the file: {:?}?",
+            track
+        )?;
+        writeln!(stdout, "Press 'y' to confirm, 'n' to cancel.")?;
+        stdout.flush()?;
+
+        loop {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Char('y') => return Ok(true),
+                    KeyCode::Char('n') => return Ok(false),
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 impl Drop for UI {
