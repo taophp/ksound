@@ -10,12 +10,12 @@ KSound is a lightweight terminal-based MP3 player that lets you enjoy your music
 
 ## Features
 
-- Play MP3 files directly from your terminal
-- Navigate through your music library with keyboard shortcuts
-- Mark tracks as favorites for quick access later
-- Flag tracks to skip in future listening sessions
-- Delete unwanted files directly while listening
-- Minimal interface that stays out of your way
+-[x] Play MP3 files directly from your terminal
+-[x] Navigate through your music library with keyboard shortcuts
+-[ ] Mark tracks as favorites to play them more often in random mode
+-[x] Flag tracks to skip in future listening sessions
+-[x] Delete unwanted files directly while listening
+-[x] Minimal interface that stays out of your way
 
 ## Installation
 
