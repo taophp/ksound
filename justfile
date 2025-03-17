@@ -11,4 +11,4 @@ set dotenv-load
   cargo run -- -r ~/Perso/sounds
 
 @getuit:
-  wget `git config --get remote.origin.url| sed 's/github/uithub/'| sed 's/\.git$//'` -o GighubUit.md
+  wget `git config --get remote.origin.url| sed 's/github/uithub/'| sed 's/\.git$//'` -o GithubUit.md
