@@ -19,6 +19,8 @@ pub struct Player {
     favorites_list: config::FavoritesList,
     pub total_duration: Option<Duration>,
     start_time: Option<Instant>,
+    paused_duration: Duration,
+    pause_start: Option<Instant>,
 }
 
 impl Player {
@@ -38,6 +40,8 @@ impl Player {
             favorites_list,
             total_duration: None,
             start_time: None,
+            paused_duration: Duration::ZERO,
+            pause_start: None,
         })
     }
 
@@ -126,6 +130,8 @@ impl Player {
 
             self.total_duration = source.total_duration();
             self.start_time = Some(Instant::now());
+            self.paused_duration = Duration::ZERO;
+            self.pause_start = None;
 
             let sink = Sink::try_new(stream_handle)?;
             sink.append(source);
@@ -135,15 +141,19 @@ impl Player {
         Ok(())
     }
 
-    pub fn pause(&self) {
+    pub fn pause(&mut self) {
         if let Some(sink) = &self.sink {
             sink.pause();
+            self.pause_start = Some(Instant::now());
         }
     }
 
-    pub fn play(&self) {
+    pub fn play(&mut self) {
         if let Some(sink) = &self.sink {
             sink.play();
+            if let Some(pause_start) = self.pause_start.take() {
+                self.paused_duration += pause_start.elapsed();
+            }
         }
     }
 
@@ -230,7 +240,13 @@ impl Player {
 
     pub fn get_current_position(&self) -> Option<Duration> {
         if let Some(start_time) = self.start_time {
-            return Some(start_time.elapsed());
+            let elapsed = start_time.elapsed();
+            let pause_duration = if let Some(pause_start) = self.pause_start {
+                self.paused_duration + pause_start.elapsed()
+            } else {
+                self.paused_duration
+            };
+            return Some(elapsed - pause_duration);
         }
         None
     }
