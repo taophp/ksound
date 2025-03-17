@@ -46,9 +46,10 @@ impl UI {
         current_position: Option<Duration>,
         total_duration: Option<Duration>,
     ) -> Result<(), UiError> {
-        // Clear the screen
+        // Clear the screenexecute!(io::stdout(), crossterm::cursor::Hide)?;
         execute!(
             io::stdout(),
+            crossterm::cursor::Hide,
             crossterm::cursor::MoveTo(0, 0),
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
         )?;
@@ -110,6 +111,24 @@ impl UI {
                 "=".repeat(bar_width),
                 " ".repeat(empty_width)
             )?;
+            let time_display = match (current_position, total_duration) {
+                (Some(current), Some(total)) => {
+                    let current_secs = current.as_secs();
+                    let total_secs = total.as_secs();
+                    format!(
+                        "{:02}:{:02} / {:02}:{:02}",
+                        current_secs / 60,
+                        current_secs % 60,
+                        total_secs / 60,
+                        total_secs % 60
+                    )
+                }
+                _ => "00:00 / 00:00".to_string(),
+            };
+
+            let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
+            execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
+            writeln!(stdout, "{}", time_display)?;
         } else {
             writeln!(stdout, "[{}]", " ".repeat(width as usize))?;
         }

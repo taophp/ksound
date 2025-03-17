@@ -7,6 +7,8 @@ use clap::Parser;
 use rand::seq::SliceRandom;
 use std::fs;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -72,6 +74,7 @@ fn main() -> Result<()> {
                 )?;
                 needs_redraw = false;
                 last_track = current_track.clone();
+                thread::sleep(Duration::from_millis(100));
             }
 
             if player.get_current_track() != last_track.as_ref() {
@@ -140,14 +143,16 @@ fn main() -> Result<()> {
             }
 
             // Refresh the progress bar
-            let current_position = player.get_current_position();
-            let total_duration = player.total_duration;
-            ui.draw(
-                current_track.as_ref(),
-                player.is_favorite(current_track.as_ref().unwrap_or(&PathBuf::new()))?,
-                current_position,
-                total_duration,
-            )?;
+            if player.is_playing() {
+                let current_position = player.get_current_position();
+                let total_duration = player.total_duration;
+                ui.draw(
+                    current_track.as_ref(),
+                    player.is_favorite(current_track.as_ref().unwrap_or(&PathBuf::new()))?,
+                    current_position,
+                    total_duration,
+                )?;
+            }
         }
     } else {
         println!("No MP3 files found to play.");
