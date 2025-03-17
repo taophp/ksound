@@ -5,6 +5,7 @@ use crossterm::{
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -38,10 +39,17 @@ impl UI {
         Ok(UI { playing: false })
     }
 
-    pub fn draw(&self, current_track: Option<&PathBuf>) -> Result<(), UiError> {
-        // Clear the screen
+    pub fn draw(
+        &self,
+        current_track: Option<&PathBuf>,
+        is_favorite: bool,
+        current_position: Option<Duration>,
+        total_duration: Option<Duration>,
+    ) -> Result<(), UiError> {
+        // Clear the screenexecute!(io::stdout(), crossterm::cursor::Hide)?;
         execute!(
             io::stdout(),
+            crossterm::cursor::Hide,
             crossterm::cursor::MoveTo(0, 0),
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
         )?;
@@ -75,18 +83,58 @@ impl UI {
             let track_str = track.display().to_string();
             let max_length = width as usize - 15; // "Now playing: " + margin
 
-            if track_str.len() > max_length {
-                let shortened = &track_str[..max_length.saturating_sub(3)];
+            let display_str = if is_favorite {
+                format!("★ {}", track_str) // Use a star symbol
+            } else {
+                track_str
+            };
+
+            if display_str.len() > max_length {
+                let shortened = &display_str[..max_length.saturating_sub(3)];
                 writeln!(stdout, "Now playing: {}...", shortened)?;
             } else {
-                writeln!(stdout, "Now playing: {}", track_str)?;
+                writeln!(stdout, "Now playing: {}", display_str)?;
             }
         } else {
             writeln!(stdout, "No track playing")?;
         };
 
-        // Controls section
+        // Progress bar
         execute!(stdout, crossterm::cursor::MoveTo(0, 4))?;
+        if let (Some(current), Some(total)) = (current_position, total_duration) {
+            let progress = current.as_secs_f32() / total.as_secs_f32();
+            let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
+            let empty_width = (width as usize - 2) - bar_width;
+            writeln!(
+                stdout,
+                "[{}{}]",
+                "=".repeat(bar_width),
+                " ".repeat(empty_width)
+            )?;
+            let time_display = match (current_position, total_duration) {
+                (Some(current), Some(total)) => {
+                    let current_secs = current.as_secs();
+                    let total_secs = total.as_secs();
+                    format!(
+                        "{:02}:{:02} / {:02}:{:02}",
+                        current_secs / 60,
+                        current_secs % 60,
+                        total_secs / 60,
+                        total_secs % 60
+                    )
+                }
+                _ => "00:00 / 00:00".to_string(),
+            };
+
+            let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
+            execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
+            writeln!(stdout, "{}", time_display)?;
+        } else {
+            writeln!(stdout, "[{}]", " ".repeat(width as usize))?;
+        }
+
+        // Controls section
+        execute!(stdout, crossterm::cursor::MoveTo(0, 6))?;
 
         // Define controls
         let controls = [
@@ -124,6 +172,7 @@ impl UI {
 
         // If we couldn't show all controls, indicate more are available
         if controls_to_show < controls.len() {
+            execute!(stdout, crossterm::cursor::MoveTo(0, 7))?;
             writeln!(
                 stdout,
                 "  (More controls available - resize terminal to see all)"
@@ -157,6 +206,32 @@ impl UI {
 
     pub fn set_playing(&mut self, playing: bool) {
         self.playing = playing;
+    }
+
+    pub fn confirm_deletion(&self, track: &PathBuf) -> Result<bool, UiError> {
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            crossterm::cursor::MoveTo(0, 10),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::FromCursorDown)
+        )?;
+        writeln!(
+            stdout,
+            "Are you sure you want to delete the file: {:?}?",
+            track
+        )?;
+        writeln!(stdout, "Press 'y' to confirm, 'n' to cancel.")?;
+        stdout.flush()?;
+
+        loop {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Char('y') => return Ok(true),
+                    KeyCode::Char('n') => return Ok(false),
+                    _ => {}
+                }
+            }
+        }
     }
 }
 

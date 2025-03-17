@@ -7,6 +7,8 @@ use clap::Parser;
 use rand::seq::SliceRandom;
 use std::fs;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -48,17 +50,31 @@ fn main() -> Result<()> {
 
     if !playlist.is_empty() {
         let mut player = player::Player::new()?;
-        player.set_playlist(playlist)?;
+        player.set_playlist(playlist, cli.random)?;
         player.play_next()?;
 
-        println!("Playing playlist. Press Ctrl+C to exit");
         let mut last_track = None;
         let mut needs_redraw = true;
         loop {
+            let current_track = player.get_current_track().cloned();
+            let current_position = player.get_current_position();
+            let total_duration = player.total_duration;
+
             if needs_redraw {
-                ui.draw(player.get_current_track())?;
+                let is_favorite = if let Some(ref track) = current_track {
+                    player.is_favorite(track)?
+                } else {
+                    false
+                };
+                ui.draw(
+                    current_track.as_ref(),
+                    is_favorite,
+                    current_position,
+                    total_duration,
+                )?;
                 needs_redraw = false;
-                last_track = player.get_current_track().cloned();
+                last_track = current_track.clone();
+                thread::sleep(Duration::from_millis(100));
             }
 
             if player.get_current_track() != last_track.as_ref() {
@@ -97,12 +113,45 @@ fn main() -> Result<()> {
                     player.mark_skip()?;
                     needs_redraw = true;
                 }
+                ui::UserAction::Delete => {
+                    player.pause();
+                    if let Some(track) = player.get_current_track() {
+                        if ui.confirm_deletion(track)? {
+                            player.delete_current_track()?;
+                            player.play_next()?;
+                        } else {
+                            player.play();
+                        }
+                    }
+                    needs_redraw = true;
+                }
+                ui::UserAction::MarkFavorite => {
+                    player.mark_favorite()?;
+                    ui.draw(
+                        current_track.as_ref(),
+                        true,
+                        current_position,
+                        total_duration,
+                    )?;
+                }
                 _ => {}
             }
 
             let continue_playback = player.handle_playback()?;
             if !continue_playback {
                 break;
+            }
+
+            // Refresh the progress bar
+            if player.is_playing() {
+                let current_position = player.get_current_position();
+                let total_duration = player.total_duration;
+                ui.draw(
+                    current_track.as_ref(),
+                    player.is_favorite(current_track.as_ref().unwrap_or(&PathBuf::new()))?,
+                    current_position,
+                    total_duration,
+                )?;
             }
         }
     } else {
