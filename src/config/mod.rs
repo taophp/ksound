@@ -180,6 +180,27 @@ impl FavoritesList {
         Ok(())
     }
 
+    pub fn remove(&mut self, track_path: &Path) -> Result<(), io::Error> {
+        self.load_favorites_tracks()?;
+
+        let canonical_path_str = match self.to_canonical_path(track_path)? {
+            Some(path) => path,
+            None => return Ok(()),
+        };
+
+        if let Some(ref mut cached) = self.cached_favorites_tracks {
+            cached.remove(&canonical_path_str);
+
+            // Réécrire le fichier avec la liste mise à jour
+            let mut file = File::create(&self.favorites_file_path)?;
+            for path in cached.iter() {
+                writeln!(file, "{}", path)?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn is_favorite(&mut self, track_path: &Path) -> Result<bool, io::Error> {
         self.load_favorites_tracks()?;
 

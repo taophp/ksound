@@ -68,8 +68,13 @@ impl Player {
 
     pub fn mark_favorite(&mut self) -> Result<()> {
         if let Some(track) = &self.current_playing {
-            self.favorites_list.add(track)?;
-            println!("Marked as favorite: {:?}", track);
+            if self.favorites_list.is_favorite(track)? {
+                self.favorites_list.remove(track)?;
+                println!("Removed from favorites: {:?}", track);
+            } else {
+                self.favorites_list.add(track)?;
+                println!("Marked as favorite: {:?}", track);
+            }
         }
         Ok(())
     }
