@@ -55,13 +55,21 @@ fn main() -> Result<()> {
         let mut needs_redraw = true;
         loop {
             let current_track = player.get_current_track().cloned();
+            let current_position = player.get_current_position();
+            let total_duration = player.total_duration;
+
             if needs_redraw {
                 let is_favorite = if let Some(ref track) = current_track {
                     player.is_favorite(track)?
                 } else {
                     false
                 };
-                ui.draw(current_track.as_ref(), is_favorite)?;
+                ui.draw(
+                    current_track.as_ref(),
+                    is_favorite,
+                    current_position,
+                    total_duration,
+                )?;
                 needs_redraw = false;
                 last_track = current_track.clone();
             }
@@ -116,7 +124,12 @@ fn main() -> Result<()> {
                 }
                 ui::UserAction::MarkFavorite => {
                     player.mark_favorite()?;
-                    ui.draw(current_track.as_ref(), true)?;
+                    ui.draw(
+                        current_track.as_ref(),
+                        true,
+                        current_position,
+                        total_duration,
+                    )?;
                 }
                 _ => {}
             }
@@ -125,6 +138,16 @@ fn main() -> Result<()> {
             if !continue_playback {
                 break;
             }
+
+            // Refresh the progress bar
+            let current_position = player.get_current_position();
+            let total_duration = player.total_duration;
+            ui.draw(
+                current_track.as_ref(),
+                player.is_favorite(current_track.as_ref().unwrap_or(&PathBuf::new()))?,
+                current_position,
+                total_duration,
+            )?;
         }
     } else {
         println!("No MP3 files found to play.");

@@ -1,11 +1,12 @@
 use crate::config;
 use anyhow::Result;
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{Decoder, OutputStream, Sink, Source};
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 pub struct Player {
     sink: Option<Sink>,
@@ -16,6 +17,8 @@ pub struct Player {
     current_playing: Option<PathBuf>,
     skip_list: config::SkipList,
     favorites_list: config::FavoritesList,
+    pub total_duration: Option<Duration>,
+    start_time: Option<Instant>,
 }
 
 impl Player {
@@ -33,6 +36,8 @@ impl Player {
             current_playing: None,
             skip_list,
             favorites_list,
+            total_duration: None,
+            start_time: None,
         })
     }
 
@@ -119,6 +124,9 @@ impl Player {
             let reader = BufReader::new(file);
             let source = Decoder::new(reader)?;
 
+            self.total_duration = source.total_duration();
+            self.start_time = Some(Instant::now());
+
             let sink = Sink::try_new(stream_handle)?;
             sink.append(source);
             self.sink = Some(sink);
@@ -143,23 +151,17 @@ impl Player {
         self.current_playing.as_ref()
     }
 
-    pub fn is_empty(&self) -> bool {
-        if let Some(sink) = &self.sink {
-            sink.empty()
-        } else {
-            true
-        }
-    }
-
     pub fn handle_playback(&mut self) -> Result<bool> {
-        if self.is_empty() && !self.playlist.is_empty() {
-            if self.current_index >= self.playlist.len() {
-                println!("End of playlist reached");
-                return Ok(false);
-            }
+        if let Some(sink) = &self.sink {
+            if sink.empty() && !self.playlist.is_empty() {
+                if self.current_index >= self.playlist.len() {
+                    println!("End of playlist reached");
+                    return Ok(false);
+                }
 
-            self.play_next()?;
-            return Ok(true);
+                self.play_next()?;
+                return Ok(true);
+            }
         }
 
         Ok(true)
@@ -203,12 +205,9 @@ impl Player {
 
     fn remove_current_from_playlist(&mut self) {
         if let Some(current) = &self.current_playing {
-            // Trouver l'index du fichier en cours dans la playlist
             if let Some(index) = self.playlist.iter().position(|path| path == current) {
-                // Supprimer de la playlist
                 self.playlist.remove(index);
 
-                // Ajuster l'index actuel si nécessaire
                 if index <= self.current_index && self.current_index > 0 {
                     self.current_index -= 1;
                 }
@@ -227,5 +226,12 @@ impl Player {
 
     pub fn is_favorite(&mut self, track: &PathBuf) -> Result<bool, io::Error> {
         self.favorites_list.is_favorite(track)
+    }
+
+    pub fn get_current_position(&self) -> Option<Duration> {
+        if let Some(start_time) = self.start_time {
+            return Some(start_time.elapsed());
+        }
+        None
     }
 }

@@ -5,6 +5,7 @@ use crossterm::{
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -38,7 +39,13 @@ impl UI {
         Ok(UI { playing: false })
     }
 
-    pub fn draw(&self, current_track: Option<&PathBuf>, is_favorite: bool) -> Result<(), UiError> {
+    pub fn draw(
+        &self,
+        current_track: Option<&PathBuf>,
+        is_favorite: bool,
+        current_position: Option<Duration>,
+        total_duration: Option<Duration>,
+    ) -> Result<(), UiError> {
         // Clear the screen
         execute!(
             io::stdout(),
@@ -91,8 +98,24 @@ impl UI {
             writeln!(stdout, "No track playing")?;
         };
 
-        // Controls section
+        // Progress bar
         execute!(stdout, crossterm::cursor::MoveTo(0, 4))?;
+        if let (Some(current), Some(total)) = (current_position, total_duration) {
+            let progress = current.as_secs_f32() / total.as_secs_f32();
+            let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
+            let empty_width = (width as usize - 2) - bar_width;
+            writeln!(
+                stdout,
+                "[{}{}]",
+                "=".repeat(bar_width),
+                " ".repeat(empty_width)
+            )?;
+        } else {
+            writeln!(stdout, "[{}]", " ".repeat(width as usize))?;
+        }
+
+        // Controls section
+        execute!(stdout, crossterm::cursor::MoveTo(0, 6))?;
 
         // Define controls
         let controls = [
@@ -130,6 +153,7 @@ impl UI {
 
         // If we couldn't show all controls, indicate more are available
         if controls_to_show < controls.len() {
+            execute!(stdout, crossterm::cursor::MoveTo(0, 7))?;
             writeln!(
                 stdout,
                 "  (More controls available - resize terminal to see all)"
