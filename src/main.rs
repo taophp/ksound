@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 
     if !playlist.is_empty() {
         let mut player = player::Player::new()?;
-        player.set_playlist(playlist)?;
+        player.set_playlist(playlist, cli.random)?;
         player.play_next()?;
 
         let mut last_track = None;

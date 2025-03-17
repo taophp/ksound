@@ -45,9 +45,11 @@ impl Player {
         })
     }
 
-    pub fn set_playlist(&mut self, playlist: Vec<PathBuf>) -> Result<()> {
+    pub fn set_playlist(&mut self, playlist: Vec<PathBuf>, random: bool) -> Result<()> {
         let mut filtered_playlist = self.filter_skipped_tracks(playlist)?;
-        filtered_playlist = self.add_favorites_twice(filtered_playlist)?;
+        if random {
+            filtered_playlist = self.add_favorites_twice(filtered_playlist)?;
+        }
         self.playlist = filtered_playlist;
         self.current_index = 0;
         Ok(())
