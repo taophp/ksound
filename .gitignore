@@ -21,3 +21,6 @@ target/
 /target
 
 /Github*
+/.fossil
+/.fslckout
+/justfile
