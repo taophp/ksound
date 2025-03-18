@@ -1,3 +1,4 @@
+use crate::player::TrackMetadata;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     execute,
@@ -42,6 +43,7 @@ impl UI {
     pub fn draw(
         &self,
         current_track: Option<&PathBuf>,
+        current_metadata: Option<&TrackMetadata>,
         is_favorite: bool,
         current_position: Option<Duration>,
         total_duration: Option<Duration>,
@@ -61,15 +63,7 @@ impl UI {
 
         // Calculate how many lines we can use
         // Reserve some lines for the header and margins
-        let available_lines = height.saturating_sub(4) as usize;
-
-        if available_lines < 5 {
-            // Terminal is too small, show minimal interface
-            writeln!(stdout, "KSound - Terminal too small")?;
-            writeln!(stdout, "Please resize your terminal")?;
-            stdout.flush()?;
-            return Ok(());
-        }
+        let available_lines = height.saturating_sub(2) as usize;
 
         // Center the title
         let title = "=== KSound Player ===";
@@ -80,13 +74,29 @@ impl UI {
 
         // Current track display
         if let Some(track) = current_track {
-            let track_str = track.display().to_string();
             let max_length = width as usize - 15; // "Now playing: " + margin
 
-            let display_str = if is_favorite {
-                format!("★ {}", track_str) // Use a star symbol
+            let display_str = if let Some(metadata) = current_metadata {
+                let parts = vec![
+                    metadata.artist.as_deref().unwrap_or("Unknown Artist"),
+                    metadata.album.as_deref().unwrap_or("Unknown Album"),
+                    metadata.title.as_deref().unwrap_or("Unknown Title"),
+                    metadata.year.as_deref().unwrap_or(""),
+                ];
+                if is_favorite {
+                    format!(
+                        "★ {} - {} - {} ({})",
+                        parts[0], parts[1], parts[2], parts[3]
+                    )
+                } else {
+                    format!("{} - {} - {} ({})", parts[0], parts[1], parts[2], parts[3])
+                }
             } else {
-                track_str
+                if is_favorite {
+                    format!("★ {}", track.display())
+                } else {
+                    track.display().to_string()
+                }
             };
 
             if display_str.len() > max_length {
@@ -102,35 +112,35 @@ impl UI {
         // Progress bar
         execute!(stdout, crossterm::cursor::MoveTo(0, 4))?;
         if let (Some(current), Some(total)) = (current_position, total_duration) {
-            let progress = current.as_secs_f32() / total.as_secs_f32();
-            let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
-            let empty_width = (width as usize - 2) - bar_width;
-            writeln!(
-                stdout,
-                "[{}{}]",
-                "=".repeat(bar_width),
-                " ".repeat(empty_width)
-            )?;
-            let time_display = match (current_position, total_duration) {
-                (Some(current), Some(total)) => {
-                    let current_secs = current.as_secs();
-                    let total_secs = total.as_secs();
-                    format!(
-                        "{:02}:{:02} / {:02}:{:02}",
-                        current_secs / 60,
-                        current_secs % 60,
-                        total_secs / 60,
-                        total_secs % 60
-                    )
-                }
-                _ => "00:00 / 00:00".to_string(),
-            };
+            if total.as_secs_f32() > 0.0 && current <= total {
+                let progress = current.as_secs_f32() / total.as_secs_f32();
+                let progress = progress.min(1.0);
+                let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
+                let empty_width = (width as usize - 2) - bar_width;
+                writeln!(
+                    stdout,
+                    "[{}{}]",
+                    "=".repeat(bar_width),
+                    " ".repeat(empty_width)
+                )?;
+                let time_display = format!(
+                    "{:02}:{:02} / {:02}:{:02}",
+                    current.as_secs() / 60,
+                    current.as_secs() % 60,
+                    total.as_secs() / 60,
+                    total.as_secs() % 60
+                );
 
-            let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
-            execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
-            writeln!(stdout, "{}", time_display)?;
+                let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
+                execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
+                writeln!(stdout, "{}", time_display)?;
+            } else {
+                writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
+                writeln!(stdout, "00:00 / 00:00")?;
+            }
         } else {
-            writeln!(stdout, "[{}]", " ".repeat(width as usize))?;
+            writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
+            writeln!(stdout, "00:00 / 00:00")?;
         }
 
         // Controls section
@@ -149,14 +159,13 @@ impl UI {
         ];
 
         // Calculate max controls to display based on available space
-        let usable_lines = available_lines.saturating_sub(4); // Header took 4 lines
+        let usable_lines = available_lines.saturating_sub(2); // Header took 4 lines
         let max_control_width = 25;
         let cols = (width as usize / max_control_width).max(1);
         let rows = (controls.len() + cols - 1) / cols; // Ceiling division
 
         // Ensure we don't exceed available height
         let rows_to_show = rows.min(usable_lines);
-        let controls_to_show = rows_to_show * cols;
 
         // Display controls in columns
         for row in 0..rows_to_show {
@@ -167,16 +176,6 @@ impl UI {
                     write!(stdout, "{:<25}", controls[idx])?;
                 }
             }
-            writeln!(stdout)?;
-        }
-
-        // If we couldn't show all controls, indicate more are available
-        if controls_to_show < controls.len() {
-            execute!(stdout, crossterm::cursor::MoveTo(0, 7))?;
-            writeln!(
-                stdout,
-                "  (More controls available - resize terminal to see all)"
-            )?;
         }
 
         stdout.flush()?;

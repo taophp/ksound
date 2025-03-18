@@ -1,5 +1,6 @@
 use crate::config;
 use anyhow::Result;
+use id3::{Tag, TagLike};
 use rodio::{Decoder, OutputStream, Sink, Source};
 use std::fs;
 use std::fs::File;
@@ -7,6 +8,27 @@ use std::io;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+pub struct TrackMetadata {
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub title: Option<String>,
+    pub year: Option<String>,
+}
+
+impl TrackMetadata {
+    fn from_path(path: &Path) -> Option<Self> {
+        match Tag::read_from_path(path) {
+            Ok(tag) => Some(TrackMetadata {
+                artist: tag.artist().map(String::from),
+                album: tag.album().map(String::from),
+                title: tag.title().map(String::from),
+                year: tag.date_recorded().map(|y| y.to_string()),
+            }),
+            Err(_) => None,
+        }
+    }
+}
 
 pub struct Player {
     sink: Option<Sink>,
@@ -21,6 +43,7 @@ pub struct Player {
     start_time: Option<Instant>,
     paused_duration: Duration,
     pause_start: Option<Instant>,
+    current_metadata: Option<TrackMetadata>,
 }
 
 impl Player {
@@ -42,6 +65,7 @@ impl Player {
             start_time: None,
             paused_duration: Duration::ZERO,
             pause_start: None,
+            current_metadata: None,
         })
     }
 
@@ -131,7 +155,7 @@ impl Player {
 
     pub fn play_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         if let Some(stream_handle) = &self._stream_handle {
-            let file = File::open(path)?;
+            let file = File::open(&path)?;
             let reader = BufReader::new(file);
             let source = Decoder::new(reader)?;
 
@@ -140,12 +164,18 @@ impl Player {
             self.paused_duration = Duration::ZERO;
             self.pause_start = None;
 
+            self.current_metadata = TrackMetadata::from_path(path.as_ref());
+
             let sink = Sink::try_new(stream_handle)?;
             sink.append(source);
             self.sink = Some(sink);
         }
 
         Ok(())
+    }
+
+    pub fn get_current_metadata(&self) -> Option<&TrackMetadata> {
+        self.current_metadata.as_ref()
     }
 
     pub fn pause(&mut self) {
@@ -241,7 +271,7 @@ impl Player {
         Ok(())
     }
 
-    pub fn is_favorite(&mut self, track: &PathBuf) -> Result<bool, io::Error> {
+    pub fn is_favorite(&self, track: &PathBuf) -> Result<bool, io::Error> {
         self.favorites_list.is_favorite(track)
     }
 
