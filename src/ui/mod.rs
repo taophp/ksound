@@ -63,9 +63,9 @@ impl UI {
 
         // Calculate how many lines we can use
         // Reserve some lines for the header and margins
-        let available_lines = height.saturating_sub(4) as usize;
+        let available_lines = height.saturating_sub(2) as usize;
 
-        if available_lines < 5 {
+        if available_lines < 4 {
             // Terminal is too small, show minimal interface
             writeln!(stdout, "KSound - Terminal too small")?;
             writeln!(stdout, "Please resize your terminal")?;
@@ -167,7 +167,7 @@ impl UI {
         ];
 
         // Calculate max controls to display based on available space
-        let usable_lines = available_lines.saturating_sub(4); // Header took 4 lines
+        let usable_lines = available_lines.saturating_sub(2); // Header took 4 lines
         let max_control_width = 25;
         let cols = (width as usize / max_control_width).max(1);
         let rows = (controls.len() + cols - 1) / cols; // Ceiling division
