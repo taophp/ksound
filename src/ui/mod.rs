@@ -2,7 +2,9 @@ use crate::player::TrackMetadata;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+    },
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -98,6 +100,8 @@ impl UI {
                     track.display().to_string()
                 }
             };
+
+            execute!(stdout, SetTitle(&display_str))?;
 
             if display_str.len() > max_length {
                 let shortened = &display_str[..max_length.saturating_sub(3)];
