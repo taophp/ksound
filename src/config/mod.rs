@@ -122,20 +122,9 @@ impl FavoritesList {
             File::create(&favorites_file_path)?;
         }
 
-        Ok(FavoritesList {
-            favorites_file_path,
-            cached_favorites_tracks: None,
-        })
-    }
-
-    fn load_favorites_tracks(&mut self) -> Result<(), io::Error> {
-        if self.cached_favorites_tracks.is_some() {
-            return Ok(());
-        }
-
         let mut favorites_tracks = HashSet::new();
 
-        let file = File::open(&self.favorites_file_path)?;
+        let file = File::open(&favorites_file_path)?;
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
@@ -146,8 +135,10 @@ impl FavoritesList {
             }
         }
 
-        self.cached_favorites_tracks = Some(favorites_tracks);
-        Ok(())
+        Ok(FavoritesList {
+            favorites_file_path,
+            cached_favorites_tracks: Some(favorites_tracks),
+        })
     }
 
     pub fn add(&mut self, track_path: &Path) -> Result<(), io::Error> {
@@ -181,8 +172,6 @@ impl FavoritesList {
     }
 
     pub fn remove(&mut self, track_path: &Path) -> Result<(), io::Error> {
-        self.load_favorites_tracks()?;
-
         let canonical_path_str = match self.to_canonical_path(track_path)? {
             Some(path) => path,
             None => return Ok(()),
@@ -201,9 +190,7 @@ impl FavoritesList {
         Ok(())
     }
 
-    pub fn is_favorite(&mut self, track_path: &Path) -> Result<bool, io::Error> {
-        self.load_favorites_tracks()?;
-
+    pub fn is_favorite(&self, track_path: &Path) -> Result<bool, io::Error> {
         let canonical_path_str = match self.to_canonical_path(track_path)? {
             Some(path) => path,
             None => return Ok(false),

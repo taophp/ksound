@@ -1,3 +1,4 @@
+use crate::player::TrackMetadata;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     execute,
@@ -42,6 +43,7 @@ impl UI {
     pub fn draw(
         &self,
         current_track: Option<&PathBuf>,
+        current_metadata: Option<&TrackMetadata>,
         is_favorite: bool,
         current_position: Option<Duration>,
         total_duration: Option<Duration>,
@@ -80,13 +82,29 @@ impl UI {
 
         // Current track display
         if let Some(track) = current_track {
-            let track_str = track.display().to_string();
             let max_length = width as usize - 15; // "Now playing: " + margin
 
-            let display_str = if is_favorite {
-                format!("★ {}", track_str) // Use a star symbol
+            let display_str = if let Some(metadata) = current_metadata {
+                let parts = vec![
+                    metadata.artist.as_deref().unwrap_or("Unknown Artist"),
+                    metadata.album.as_deref().unwrap_or("Unknown Album"),
+                    metadata.title.as_deref().unwrap_or("Unknown Title"),
+                    metadata.year.as_deref().unwrap_or(""),
+                ];
+                if is_favorite {
+                    format!(
+                        "★ {} - {} - {} ({})",
+                        parts[0], parts[1], parts[2], parts[3]
+                    )
+                } else {
+                    format!("{} - {} - {} ({})", parts[0], parts[1], parts[2], parts[3])
+                }
             } else {
-                track_str
+                if is_favorite {
+                    format!("★ {}", track.display())
+                } else {
+                    track.display().to_string()
+                }
             };
 
             if display_str.len() > max_length {

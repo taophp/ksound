@@ -68,6 +68,7 @@ fn main() -> Result<()> {
                 };
                 ui.draw(
                     current_track.as_ref(),
+                    player.get_current_metadata(),
                     is_favorite,
                     current_position,
                     total_duration,
@@ -129,6 +130,7 @@ fn main() -> Result<()> {
                     player.mark_favorite()?;
                     ui.draw(
                         current_track.as_ref(),
+                        player.get_current_metadata(),
                         true,
                         current_position,
                         total_duration,
@@ -148,6 +150,7 @@ fn main() -> Result<()> {
                 let total_duration = player.total_duration;
                 ui.draw(
                     current_track.as_ref(),
+                    player.get_current_metadata(),
                     player.is_favorite(current_track.as_ref().unwrap_or(&PathBuf::new()))?,
                     current_position,
                     total_duration,
