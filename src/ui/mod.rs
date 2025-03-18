@@ -174,7 +174,6 @@ impl UI {
 
         // Ensure we don't exceed available height
         let rows_to_show = rows.min(usable_lines);
-        let controls_to_show = rows_to_show * cols;
 
         // Display controls in columns
         for row in 0..rows_to_show {
@@ -185,16 +184,6 @@ impl UI {
                     write!(stdout, "{:<25}", controls[idx])?;
                 }
             }
-            writeln!(stdout)?;
-        }
-
-        // If we couldn't show all controls, indicate more are available
-        if controls_to_show < controls.len() {
-            execute!(stdout, crossterm::cursor::MoveTo(0, 7))?;
-            writeln!(
-                stdout,
-                "  (More controls available - resize terminal to see all)"
-            )?;
         }
 
         stdout.flush()?;
