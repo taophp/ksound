@@ -65,14 +65,6 @@ impl UI {
         // Reserve some lines for the header and margins
         let available_lines = height.saturating_sub(2) as usize;
 
-        if available_lines < 4 {
-            // Terminal is too small, show minimal interface
-            writeln!(stdout, "KSound - Terminal too small")?;
-            writeln!(stdout, "Please resize your terminal")?;
-            stdout.flush()?;
-            return Ok(());
-        }
-
         // Center the title
         let title = "=== KSound Player ===";
         let padding = (width as usize).saturating_sub(title.len()) / 2;
@@ -120,35 +112,35 @@ impl UI {
         // Progress bar
         execute!(stdout, crossterm::cursor::MoveTo(0, 4))?;
         if let (Some(current), Some(total)) = (current_position, total_duration) {
-            let progress = current.as_secs_f32() / total.as_secs_f32();
-            let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
-            let empty_width = (width as usize - 2) - bar_width;
-            writeln!(
-                stdout,
-                "[{}{}]",
-                "=".repeat(bar_width),
-                " ".repeat(empty_width)
-            )?;
-            let time_display = match (current_position, total_duration) {
-                (Some(current), Some(total)) => {
-                    let current_secs = current.as_secs();
-                    let total_secs = total.as_secs();
-                    format!(
-                        "{:02}:{:02} / {:02}:{:02}",
-                        current_secs / 60,
-                        current_secs % 60,
-                        total_secs / 60,
-                        total_secs % 60
-                    )
-                }
-                _ => "00:00 / 00:00".to_string(),
-            };
+            if total.as_secs_f32() > 0.0 && current <= total {
+                let progress = current.as_secs_f32() / total.as_secs_f32();
+                let progress = progress.min(1.0);
+                let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
+                let empty_width = (width as usize - 2) - bar_width;
+                writeln!(
+                    stdout,
+                    "[{}{}]",
+                    "=".repeat(bar_width),
+                    " ".repeat(empty_width)
+                )?;
+                let time_display = format!(
+                    "{:02}:{:02} / {:02}:{:02}",
+                    current.as_secs() / 60,
+                    current.as_secs() % 60,
+                    total.as_secs() / 60,
+                    total.as_secs() % 60
+                );
 
-            let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
-            execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
-            writeln!(stdout, "{}", time_display)?;
+                let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
+                execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
+                writeln!(stdout, "{}", time_display)?;
+            } else {
+                writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
+                writeln!(stdout, "00:00 / 00:00")?;
+            }
         } else {
-            writeln!(stdout, "[{}]", " ".repeat(width as usize))?;
+            writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
+            writeln!(stdout, "00:00 / 00:00")?;
         }
 
         // Controls section
