@@ -1,7 +1,14 @@
 [package]
 name = "ksound"
-version = "0.1.0"
+version = "0.1.1"
+authors = ["Stéphane Mourey <mail@stephanemourey.fr>"]
 edition = "2021"
+description = "A minimalist command-line MP3 player written in Rust."
+license = "AGPL-3.0"
+repository = "https://github.com/taophp/ksound"
+readme = "README.md"
+keywords = ["mp3", "player", "terminal", "audio"]
+categories = ["multimedia::audio", "command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.97"
