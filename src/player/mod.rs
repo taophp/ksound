@@ -9,6 +9,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct TrackMetadata {
     pub artist: Option<String>,
     pub album: Option<String>,
@@ -17,7 +18,7 @@ pub struct TrackMetadata {
 }
 
 impl TrackMetadata {
-    fn from_path(path: &Path) -> Option<Self> {
+    pub fn from_path(path: &Path) -> Option<Self> {
         match Tag::read_from_path(path) {
             Ok(tag) => Some(TrackMetadata {
                 artist: tag.artist().map(String::from),
@@ -43,7 +44,7 @@ pub struct Player {
     start_time: Option<Instant>,
     paused_duration: Duration,
     pause_start: Option<Instant>,
-    current_metadata: Option<TrackMetadata>,
+    pub current_metadata: Option<TrackMetadata>,
 }
 
 impl Player {
@@ -67,6 +68,43 @@ impl Player {
             pause_start: None,
             current_metadata: None,
         })
+    }
+
+    /// Modifie les tags d'un fichier MP3 (artist, album, title, year).
+    /// Si un champ est None, il n'est pas modifié.
+    pub fn edit_tags(
+        &self,
+        path: &Path,
+        artist: Option<String>,
+        album: Option<String>,
+        title: Option<String>,
+        year: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        let mut tag = match id3::Tag::read_from_path(path) {
+            Ok(tag) => tag,
+            Err(_) => id3::Tag::new(),
+        };
+
+        if let Some(artist) = artist {
+            tag.set_artist(artist);
+        }
+        if let Some(album) = album {
+            tag.set_album(album);
+        }
+        if let Some(title) = title {
+            tag.set_title(title);
+        }
+        if let Some(year) = year {
+            if let Ok(year_num) = year.parse::<i32>() {
+                tag.set_year(year_num);
+            } else {
+                // Si l'année n'est pas un nombre, on la met dans un champ texte
+                tag.add_frame(id3::Frame::with_content("TORY", id3::Content::Text(year)));
+            }
+        }
+
+        tag.write_to_path(path, id3::Version::Id3v24)?;
+        Ok(())
     }
 
     pub fn set_playlist(&mut self, playlist: Vec<PathBuf>, random: bool) -> Result<()> {

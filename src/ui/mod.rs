@@ -31,6 +31,7 @@ pub enum UserAction {
     MarkFavorite,
     MarkSkip,
     Delete,
+    EditTags,
     None,
 }
 
@@ -208,6 +209,7 @@ impl UI {
                     KeyCode::Char('f') => UserAction::MarkFavorite,
                     KeyCode::Char('s') => UserAction::MarkSkip,
                     KeyCode::Char('d') => UserAction::Delete,
+                    KeyCode::Char('e') => UserAction::EditTags,
                     KeyCode::Char('+') => UserAction::VolumeUp,
                     KeyCode::Char('-') => UserAction::VolumeDown,
                     _ => UserAction::None,
@@ -246,6 +248,70 @@ impl UI {
                 }
             }
         }
+    }
+    /// Affiche un formulaire d'édition des tags pour un fichier MP3.
+    /// Affiche le nom du fichier, les tags actuels, et permet de saisir de nouveaux tags (Entrée pour garder l'existant).
+    pub fn edit_tags_form(
+        &self,
+        track: &PathBuf,
+        metadata: Option<&TrackMetadata>,
+    ) -> Result<(Option<String>, Option<String>, Option<String>, Option<String>), UiError> {
+        use std::io::{stdin, Write};
+        use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+
+        // Désactive le raw mode pour la saisie utilisateur
+        disable_raw_mode()?;
+
+        // Nettoie l'écran et affiche le nom du feichier
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            crossterm::cursor::Show,
+            crossterm::cursor::MoveTo(0, 0),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        )?;
+        writeln!(stdout, "=== Edit MP3 Tags ===")?;
+        writeln!(stdout, "File: {}", track.display())?;
+        writeln!(stdout, "Leave blank and press Enter to keep the current value.")?;
+        writeln!(stdout)?;
+
+        // Récupère les valeurs actuelles
+        let (cur_artist, cur_album, cur_title, cur_year) = if let Some(m) = metadata {
+            (
+                m.artist.as_deref().unwrap_or(""),
+                m.album.as_deref().unwrap_or(""),
+                m.title.as_deref().unwrap_or(""),
+                m.year.as_deref().unwrap_or(""),
+            )
+        } else {
+            ("", "", "", "")
+        };
+
+        // Helper pour lire une ligne
+        fn read_line(prompt: &str, current: &str) -> io::Result<Option<String>> {
+            let mut stdout = io::stdout();
+            write!(stdout, "{} [{}]: ", prompt, current)?;
+            stdout.flush()?;
+            let mut input = String::new();
+            stdin().read_line(&mut input)?;
+            let input = input.trim_end();
+            if input.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(input.to_string()))
+            }
+        }
+
+        // Saisie utilisateur
+        let artist = read_line("Artist", cur_artist)?;
+        let album = read_line("Album", cur_album)?;
+        let title = read_line("Title", cur_title)?;
+        let year = read_line("Year", cur_year)?;
+
+        // Réactive le raw mode avant de rendre la main à l'UI
+        enable_raw_mode()?;
+
+        Ok((artist, album, title, year))
     }
 }
 

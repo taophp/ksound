@@ -136,6 +136,39 @@ fn main() -> Result<()> {
                         total_duration,
                     )?;
                 }
+                ui::UserAction::EditTags => {
+                    // Clone les infos nécessaires AVANT tout appel à UI
+                    let (track, meta) = {
+                        let track = player.get_current_track().cloned();
+                        let meta = player.get_current_metadata().cloned();
+                        (track, meta)
+                    };
+                    if let Some(track) = track {
+                        let (artist, album, title, year) = ui.edit_tags_form(&track, meta.as_ref())?;
+                        player.edit_tags(
+                            &track,
+                            artist,
+                            album,
+                            title,
+                            year,
+                        )?;
+                        // Recharge les métadonnées à jour après édition
+                        let new_metadata = player::TrackMetadata::from_path(&track);
+                        player.current_metadata = new_metadata;
+                        // Redessine l'UI avec les nouvelles valeurs
+                        let is_favorite = player.is_favorite(&track)?;
+                        let current_position = player.get_current_position();
+                        let total_duration = player.total_duration;
+                        ui.draw(
+                            Some(&track),
+                            player.current_metadata.as_ref(),
+                            is_favorite,
+                            current_position,
+                            total_duration,
+                        )?;
+                        needs_redraw = false; // L'UI vient d'être redessinée
+                    }
+                }
                 _ => {}
             }
 
