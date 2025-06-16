@@ -122,15 +122,33 @@ impl Player {
             return Ok(());
         }
 
-        if self.current_index >= self.playlist.len() {
-            self.current_index = 0;
+        let playlist_len = self.playlist.len();
+        let mut attempts = 0;
+
+        while attempts < playlist_len {
+            if self.current_index >= self.playlist.len() {
+                self.current_index = 0;
+            }
+
+            let path = self.playlist[self.current_index].clone();
+            println!("Playing: {:?}", path);
+
+            match self.play_file(&path) {
+                Ok(_) => {
+                    self.current_playing = Some(path);
+                    self.current_index = (self.current_index + 1) % self.playlist.len();
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("Could not play file {:?}: {}. Skipping to next.", path, e);
+                    self.current_index = (self.current_index + 1) % self.playlist.len();
+                    attempts += 1;
+                    continue;
+                }
+            }
         }
 
-        let path = self.playlist[self.current_index].clone();
-        println!("Playing: {:?}", path);
-        self.play_file(&path)?;
-        self.current_playing = Some(path);
-        self.current_index = (self.current_index + 1) % self.playlist.len();
+        eprintln!("No playable files found in playlist.");
         Ok(())
     }
 
@@ -139,17 +157,33 @@ impl Player {
             return Ok(());
         }
 
-        if self.current_index == 0 {
-            self.current_index = self.playlist.len().saturating_sub(1);
-        } else {
-            self.current_index = self.current_index.saturating_sub(1);
+        let playlist_len = self.playlist.len();
+        let mut attempts = 0;
+
+        while attempts < playlist_len {
+            if self.current_index == 0 {
+                self.current_index = self.playlist.len().saturating_sub(1);
+            } else {
+                self.current_index = self.current_index.saturating_sub(1);
+            }
+
+            let path = self.playlist[self.current_index].clone();
+            println!("Playing: {:?}", path);
+
+            match self.play_file(&path) {
+                Ok(_) => {
+                    self.current_playing = Some(path);
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("Could not play file {:?}: {}. Skipping to previous.", path, e);
+                    attempts += 1;
+                    continue;
+                }
+            }
         }
 
-        let path = self.playlist[self.current_index].clone();
-        println!("Playing: {:?}", path);
-        self.play_file(&path)?;
-        self.current_playing = Some(path);
-
+        eprintln!("No playable files found in playlist.");
         Ok(())
     }
 
