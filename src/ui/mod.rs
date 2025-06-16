@@ -79,19 +79,30 @@ impl UI {
             let max_length = width as usize - 15; // "Now playing: " + margin
 
             let display_str = if let Some(metadata) = current_metadata {
-                let parts = vec![
-                    metadata.artist.as_deref().unwrap_or("Unknown Artist"),
-                    metadata.album.as_deref().unwrap_or("Unknown Album"),
-                    metadata.title.as_deref().unwrap_or("Unknown Title"),
-                    metadata.year.as_deref().unwrap_or(""),
-                ];
-                if is_favorite {
-                    format!(
-                        "★ {} - {} - {} ({})",
-                        parts[0], parts[1], parts[2], parts[3]
-                    )
+                let artist = metadata.artist.as_deref().unwrap_or("Unknown Artist");
+                let album = metadata.album.as_deref().unwrap_or("Unknown Album");
+                let title = metadata.title.as_deref().unwrap_or("Unknown Title");
+                let year = metadata.year.as_deref().unwrap_or("");
+                let all_unknown = artist == "Unknown Artist" && album == "Unknown Album" && title == "Unknown Title" && year.is_empty();
+
+                // Always show the relative file path
+                let rel_path = match track.strip_prefix(std::env::current_dir().unwrap_or_else(|_| track.clone())).ok() {
+                    Some(p) => p.display().to_string(),
+                    None => track.display().to_string(),
+                };
+
+                if all_unknown {
+                    if is_favorite {
+                        format!("★ {}", rel_path)
+                    } else {
+                        rel_path
+                    }
                 } else {
-                    format!("{} - {} - {} ({})", parts[0], parts[1], parts[2], parts[3])
+                    if is_favorite {
+                        format!("★ {} - {} - {} ({}) [{}]", artist, album, title, year, rel_path)
+                    } else {
+                        format!("{} - {} - {} ({}) [{}]", artist, album, title, year, rel_path)
+                    }
                 }
             } else {
                 if is_favorite {
