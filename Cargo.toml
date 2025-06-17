@@ -1,6 +1,6 @@
 [package]
 name = "ksound"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Stéphane Mourey <mail@stephanemourey.fr>"]
 edition = "2021"
 description = "A minimalist command-line MP3 player written in Rust."

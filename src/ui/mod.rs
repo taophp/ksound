@@ -170,6 +170,7 @@ impl UI {
             "f: Mark as favorite",
             "s: Mark to skip",
             "d: Delete file",
+            "e: Edit MP3 tags",
             "+/-: Volume up/down",
             "q: Quit",
         ];
