@@ -134,10 +134,8 @@ impl Player {
         if let Some(track) = &self.current_playing {
             if self.favorites_list.is_favorite(track)? {
                 self.favorites_list.remove(track)?;
-                println!("Removed from favorites: {:?}", track);
             } else {
                 self.favorites_list.add(track)?;
-                println!("Marked as favorite: {:?}", track);
             }
         }
         Ok(())
@@ -169,7 +167,6 @@ impl Player {
             }
 
             let path = self.playlist[self.current_index].clone();
-            println!("Playing: {:?}", path);
 
             match self.play_file(&path) {
                 Ok(_) => {
@@ -177,8 +174,8 @@ impl Player {
                     self.current_index = (self.current_index + 1) % self.playlist.len();
                     return Ok(());
                 }
-                Err(e) => {
-                    eprintln!("Could not play file {:?}: {}. Skipping to next.", path, e);
+                Err(_e) => {
+                    // Could not play file, skip to next
                     self.current_index = (self.current_index + 1) % self.playlist.len();
                     attempts += 1;
                     continue;
@@ -186,7 +183,7 @@ impl Player {
             }
         }
 
-        eprintln!("No playable files found in playlist.");
+        // No playable files found in playlist
         Ok(())
     }
 
@@ -206,22 +203,21 @@ impl Player {
             }
 
             let path = self.playlist[self.current_index].clone();
-            println!("Playing: {:?}", path);
 
             match self.play_file(&path) {
                 Ok(_) => {
                     self.current_playing = Some(path);
                     return Ok(());
                 }
-                Err(e) => {
-                    eprintln!("Could not play file {:?}: {}. Skipping to previous.", path, e);
+                Err(_e) => {
+                    // Could not play file, skip to previous
                     attempts += 1;
                     continue;
                 }
             }
         }
 
-        eprintln!("No playable files found in playlist.");
+        // No playable files found in playlist
         Ok(())
     }
 
@@ -274,7 +270,7 @@ impl Player {
         if let Some(sink) = &self.sink {
             if sink.empty() && !self.playlist.is_empty() {
                 if self.current_index >= self.playlist.len() {
-                    println!("End of playlist reached");
+                    // End of playlist reached
                     return Ok(false);
                 }
 
@@ -299,7 +295,6 @@ impl Player {
             let current_volume = sink.volume();
             let new_volume = (current_volume + 0.1).min(2.0);
             sink.set_volume(new_volume);
-            println!("Volume: {:.0}%", new_volume * 100.0);
         }
     }
 
@@ -308,14 +303,12 @@ impl Player {
             let current_volume = sink.volume();
             let new_volume = (current_volume - 0.1).max(0.0);
             sink.set_volume(new_volume);
-            println!("Volume: {:.0}%", new_volume * 100.0);
         }
     }
 
     pub fn mark_skip(&mut self) -> Result<()> {
         if let Some(track) = &self.current_playing {
             self.skip_list.add(track)?;
-            println!("Marked for skipping: {:?}", track);
             self.remove_current_from_playlist();
             self.play_next()?;
         }
@@ -337,7 +330,6 @@ impl Player {
     pub fn delete_current_track(&mut self) -> Result<(), io::Error> {
         if let Some(track) = &self.current_playing {
             fs::remove_file(track)?;
-            println!("Deleted: {:?}", track);
             self.remove_current_from_playlist();
         }
         Ok(())

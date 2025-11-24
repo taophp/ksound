@@ -331,31 +331,44 @@ impl UI {
         self.terminal.draw(|f| {
             let size = f.area();
             
-            // Create a centered popup
-            let popup_area = centered_rect(60, 20, size);
+            // Create a centered popup - increased height to ensure all content is visible
+            let popup_area = centered_rect(70, 30, size);
             
             let text = vec![
                 Line::from(vec![
-                    Span::styled("Delete Confirmation", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                    Span::styled("⚠ Delete Confirmation ⚠", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
                 ]),
                 Line::from(""),
                 Line::from(vec![
                     Span::raw("Are you sure you want to delete:"),
                 ]),
+                Line::from(""),
                 Line::from(vec![
-                    Span::styled(format!("{:?}", track), Style::default().fg(Color::Yellow)),
+                    Span::styled(format!("{}", track.display()), Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC)),
+                ]),
+                Line::from(""),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("  [Y] ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::raw("Yes, delete this file   "),
+                    Span::styled("  [N] ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                    Span::raw("No, cancel"),
                 ]),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("y", Style::default().fg(Color::Green)),
-                    Span::raw(": Yes  "),
-                    Span::styled("n", Style::default().fg(Color::Red)),
-                    Span::raw(": No"),
+                    Span::styled("Press ESC to cancel", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
                 ]),
             ];
             
             let paragraph = Paragraph::new(text)
-                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Red)))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+                        .title(" WARNING ")
+                        .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+                )
+                .alignment(ratatui::layout::Alignment::Center)
                 .wrap(Wrap { trim: true });
             
             f.render_widget(paragraph, popup_area);
