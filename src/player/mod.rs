@@ -310,7 +310,25 @@ impl Player {
         if let Some(track) = &self.current_playing {
             self.skip_list.add(track)?;
             self.remove_current_from_playlist();
-            self.play_next()?;
+            
+            // After removing current track, current_index points to the next track
+            // We need to play it without incrementing the index again
+            if !self.playlist.is_empty() {
+                if self.current_index >= self.playlist.len() {
+                    self.current_index = 0;
+                }
+                let path = self.playlist[self.current_index].clone();
+                match self.play_file(&path) {
+                    Ok(_) => {
+                        self.current_playing = Some(path);
+                        self.current_index = (self.current_index + 1) % self.playlist.len();
+                    }
+                    Err(_) => {
+                        // If this fails, try play_next as fallback
+                        self.play_next()?;
+                    }
+                }
+            }
         }
         Ok(())
     }
