@@ -3,10 +3,18 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
     },
 };
-use std::io::{self, Write};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Gauge, Paragraph, Wrap},
+    Terminal,
+};
+use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
@@ -18,7 +26,34 @@ pub enum UiError {
 }
 
 pub struct UI {
-    playing: bool,
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    mode: UiMode,
+    // For tag editing
+    edit_state: EditState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum UiMode {
+    Normal,
+    EditingTags,
+    ConfirmDelete,
+}
+
+#[derive(Debug, Clone)]
+struct EditState {
+    current_field: usize,
+    fields: Vec<String>,
+    field_names: Vec<&'static str>,
+}
+
+impl Default for EditState {
+    fn default() -> Self {
+        Self {
+            current_field: 0,
+            fields: vec![String::new(); 4],
+            field_names: vec!["Artist", "Album", "Title", "Year"],
+        }
+    }
 }
 
 pub enum UserAction {
@@ -38,168 +73,197 @@ pub enum UserAction {
 impl UI {
     pub fn new() -> Result<Self, UiError> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen)?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen)?;
+        let backend = CrosstermBackend::new(stdout);
+        let terminal = Terminal::new(backend)?;
 
-        Ok(UI { playing: false })
+        Ok(UI {
+            terminal,
+            mode: UiMode::Normal,
+            edit_state: EditState::default(),
+        })
     }
 
     pub fn draw(
-        &self,
+        &mut self,
         current_track: Option<&PathBuf>,
         current_metadata: Option<&TrackMetadata>,
         is_favorite: bool,
         current_position: Option<Duration>,
         total_duration: Option<Duration>,
     ) -> Result<(), UiError> {
-        // Clear the screenexecute!(io::stdout(), crossterm::cursor::Hide)?;
-        execute!(
-            io::stdout(),
-            crossterm::cursor::Hide,
-            crossterm::cursor::MoveTo(0, 0),
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-        )?;
+        self.terminal.draw(|f| {
+            let size = f.area();
 
-        let mut stdout = io::stdout();
+            // Main layout
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3), // Header
+                    Constraint::Length(3), // Track info
+                    Constraint::Length(3), // Progress bar
+                    Constraint::Min(5),    // Controls
+                ])
+                .split(size);
 
-        // Get terminal dimensions
-        let (width, height) = crossterm::terminal::size()?;
+            // Header
+            let title = Paragraph::new("=== KSound Player ===")
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .alignment(ratatui::layout::Alignment::Center)
+                .block(Block::default().borders(Borders::NONE));
+            f.render_widget(title, chunks[0]);
 
-        // Calculate how many lines we can use
-        // Reserve some lines for the header and margins
-        let available_lines = height.saturating_sub(2) as usize;
+            // Track info
+            let track_text = if let Some(track) = current_track {
+                let display_str = if let Some(metadata) = current_metadata {
+                    let artist = metadata.artist.as_deref().unwrap_or("Unknown Artist");
+                    let album = metadata.album.as_deref().unwrap_or("Unknown Album");
+                    let title = metadata.title.as_deref().unwrap_or("Unknown Title");
+                    let year = metadata.year.as_deref().unwrap_or("");
+                    let all_unknown = artist == "Unknown Artist"
+                        && album == "Unknown Album"
+                        && title == "Unknown Title"
+                        && year.is_empty();
 
-        // Center the title
-        let title = "=== KSound Player ===";
-        let padding = (width as usize).saturating_sub(title.len()) / 2;
-        writeln!(stdout, "{:>width$}{}", "", title, width = padding)?;
+                    let rel_path = match track
+                        .strip_prefix(std::env::current_dir().unwrap_or_else(|_| track.clone()))
+                        .ok()
+                    {
+                        Some(p) => p.display().to_string(),
+                        None => track.display().to_string(),
+                    };
 
-        execute!(stdout, crossterm::cursor::MoveTo(0, 2))?;
-
-        // Current track display
-        if let Some(track) = current_track {
-            let max_length = width as usize - 15; // "Now playing: " + margin
-
-            let display_str = if let Some(metadata) = current_metadata {
-                let artist = metadata.artist.as_deref().unwrap_or("Unknown Artist");
-                let album = metadata.album.as_deref().unwrap_or("Unknown Album");
-                let title = metadata.title.as_deref().unwrap_or("Unknown Title");
-                let year = metadata.year.as_deref().unwrap_or("");
-                let all_unknown = artist == "Unknown Artist" && album == "Unknown Album" && title == "Unknown Title" && year.is_empty();
-
-                // Always show the relative file path
-                let rel_path = match track.strip_prefix(std::env::current_dir().unwrap_or_else(|_| track.clone())).ok() {
-                    Some(p) => p.display().to_string(),
-                    None => track.display().to_string(),
+                    if all_unknown {
+                        if is_favorite {
+                            format!("★ {}", rel_path)
+                        } else {
+                            rel_path
+                        }
+                    } else {
+                        let year_str = if year.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({})", year)
+                        };
+                        if is_favorite {
+                            format!("★ {} - {} - {}{} [{}]", artist, album, title, year_str, rel_path)
+                        } else {
+                            format!("{} - {} - {}{} [{}]", artist, album, title, year_str, rel_path)
+                        }
+                    }
+                } else {
+                    if is_favorite {
+                        format!("★ {}", track.display())
+                    } else {
+                        track.display().to_string()
+                    }
                 };
-
-                if all_unknown {
-                    if is_favorite {
-                        format!("★ {}", rel_path)
-                    } else {
-                        rel_path
-                    }
-                } else {
-                    if is_favorite {
-                        format!("★ {} - {} - {} ({}) [{}]", artist, album, title, year, rel_path)
-                    } else {
-                        format!("{} - {} - {} ({}) [{}]", artist, album, title, year, rel_path)
-                    }
-                }
+                format!("Now playing: {}", display_str)
             } else {
-                if is_favorite {
-                    format!("★ {}", track.display())
-                } else {
-                    track.display().to_string()
-                }
+                "No track playing".to_string()
             };
 
-            execute!(stdout, SetTitle(&display_str))?;
+            let track_paragraph = Paragraph::new(track_text)
+                .style(Style::default().fg(Color::White))
+                .wrap(Wrap { trim: true })
+                .block(Block::default().borders(Borders::NONE));
+            f.render_widget(track_paragraph, chunks[1]);
 
-            if display_str.len() > max_length {
-                let shortened = &display_str[..max_length.saturating_sub(3)];
-                writeln!(stdout, "Now playing: {}...", shortened)?;
-            } else {
-                writeln!(stdout, "Now playing: {}", display_str)?;
-            }
-        } else {
-            writeln!(stdout, "No track playing")?;
-        };
+            // Progress bar
+            if let (Some(current), Some(total)) = (current_position, total_duration) {
+                if total.as_secs_f32() > 0.0 && current <= total {
+                    let progress = (current.as_secs_f32() / total.as_secs_f32()).min(1.0);
+                    let time_label = format!(
+                        "{:02}:{:02} / {:02}:{:02}",
+                        current.as_secs() / 60,
+                        current.as_secs() % 60,
+                        total.as_secs() / 60,
+                        total.as_secs() % 60
+                    );
 
-        // Progress bar
-        execute!(stdout, crossterm::cursor::MoveTo(0, 4))?;
-        if let (Some(current), Some(total)) = (current_position, total_duration) {
-            if total.as_secs_f32() > 0.0 && current <= total {
-                let progress = current.as_secs_f32() / total.as_secs_f32();
-                let progress = progress.min(1.0);
-                let bar_width = ((width as f32 - 2.0) * progress).round() as usize;
-                let empty_width = (width as usize - 2) - bar_width;
-                writeln!(
-                    stdout,
-                    "[{}{}]",
-                    "=".repeat(bar_width),
-                    " ".repeat(empty_width)
-                )?;
-                let time_display = format!(
-                    "{:02}:{:02} / {:02}:{:02}",
-                    current.as_secs() / 60,
-                    current.as_secs() % 60,
-                    total.as_secs() / 60,
-                    total.as_secs() % 60
-                );
-
-                let time_padding = (width as usize).saturating_sub(time_display.len()) / 2;
-                execute!(stdout, crossterm::cursor::MoveTo(time_padding as u16, 4))?;
-                writeln!(stdout, "{}", time_display)?;
-            } else {
-                writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
-                writeln!(stdout, "00:00 / 00:00")?;
-            }
-        } else {
-            writeln!(stdout, "[{}]", " ".repeat(width as usize - 2))?;
-            writeln!(stdout, "00:00 / 00:00")?;
-        }
-
-        // Controls section
-        execute!(stdout, crossterm::cursor::MoveTo(0, 6))?;
-
-        // Define controls
-        let controls = [
-            "Space: Play/Pause",
-            "→: Next track",
-            "←: Previous track",
-            "f: Mark as favorite",
-            "s: Mark to skip",
-            "d: Delete file",
-            "e: Edit MP3 tags",
-            "+/-: Volume up/down",
-            "q: Quit",
-        ];
-
-        // Calculate max controls to display based on available space
-        let usable_lines = available_lines.saturating_sub(2); // Header took 4 lines
-        let max_control_width = 25;
-        let cols = (width as usize / max_control_width).max(1);
-        let rows = (controls.len() + cols - 1) / cols; // Ceiling division
-
-        // Ensure we don't exceed available height
-        let rows_to_show = rows.min(usable_lines);
-
-        // Display controls in columns
-        for row in 0..rows_to_show {
-            write!(stdout, "  ")?;
-            for col in 0..cols {
-                let idx = row + col * rows_to_show;
-                if idx < controls.len() {
-                    write!(stdout, "{:<25}", controls[idx])?;
+                    let gauge = Gauge::default()
+                        .block(Block::default().borders(Borders::NONE))
+                        .gauge_style(
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .bg(Color::Black)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .label(time_label)
+                        .ratio(progress as f64);
+                    f.render_widget(gauge, chunks[2]);
+                } else {
+                    let gauge = Gauge::default()
+                        .block(Block::default().borders(Borders::NONE))
+                        .gauge_style(Style::default().fg(Color::DarkGray).bg(Color::Black))
+                        .label("00:00 / 00:00")
+                        .ratio(0.0);
+                    f.render_widget(gauge, chunks[2]);
                 }
+            } else {
+                let gauge = Gauge::default()
+                    .block(Block::default().borders(Borders::NONE))
+                    .gauge_style(Style::default().fg(Color::DarkGray).bg(Color::Black))
+                    .label("00:00 / 00:00")
+                    .ratio(0.0);
+                f.render_widget(gauge, chunks[2]);
             }
-        }
 
-        stdout.flush()?;
+            // Controls
+            let controls_text = vec![
+                Line::from(vec![
+                    Span::styled("Space", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Play/Pause  "),
+                    Span::styled("→", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Next  "),
+                    Span::styled("←", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Previous"),
+                ]),
+                Line::from(vec![
+                    Span::styled("f", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Favorite  "),
+                    Span::styled("s", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Skip  "),
+                    Span::styled("d", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Delete  "),
+                    Span::styled("e", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Edit tags"),
+                ]),
+                Line::from(vec![
+                    Span::styled("+/-", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Volume  "),
+                    Span::styled("q", Style::default().fg(Color::Yellow)),
+                    Span::raw(": Quit"),
+                ]),
+            ];
+
+            let controls = Paragraph::new(controls_text)
+                .style(Style::default().fg(Color::White))
+                .block(
+                    Block::default()
+                        .borders(Borders::TOP)
+                        .border_style(Style::default().fg(Color::DarkGray))
+                        .title("Controls"),
+                );
+            f.render_widget(controls, chunks[3]);
+        })?;
+
         Ok(())
     }
 
     pub fn handle_input(&mut self) -> Result<UserAction, UiError> {
+        if self.mode == UiMode::EditingTags {
+            // Handle tag editing input
+            return self.handle_edit_input();
+        }
+
+        if self.mode == UiMode::ConfirmDelete {
+            // Handle delete confirmation
+            return self.handle_confirm_input();
+        }
+
+        // Normal mode input
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(KeyEvent { code, .. }) = event::read()? {
                 return Ok(match code {
@@ -221,62 +285,106 @@ impl UI {
         Ok(UserAction::None)
     }
 
-    pub fn set_playing(&mut self, playing: bool) {
-        self.playing = playing;
+    fn handle_edit_input(&mut self) -> Result<UserAction, UiError> {
+        // This will be implemented for tag editing
+        // For now, just exit edit mode
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Esc => {
+                        self.mode = UiMode::Normal;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(UserAction::None)
     }
 
-    pub fn confirm_deletion(&self, track: &PathBuf) -> Result<bool, UiError> {
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            crossterm::cursor::MoveTo(0, 10),
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::FromCursorDown)
-        )?;
-        writeln!(
-            stdout,
-            "Are you sure you want to delete the file: {:?}?",
-            track
-        )?;
-        writeln!(stdout, "Press 'y' to confirm, 'n' to cancel.")?;
-        stdout.flush()?;
+    fn handle_confirm_input(&mut self) -> Result<UserAction, UiError> {
+        // This will be implemented for delete confirmation
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        self.mode = UiMode::Normal;
+                        return Ok(UserAction::Delete);
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        self.mode = UiMode::Normal;
+                        return Ok(UserAction::None);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(UserAction::None)
+    }
 
+    pub fn set_playing(&mut self, _playing: bool) {
+        // This can be used to update UI state if needed
+    }
+
+    pub fn confirm_deletion(&mut self, track: &PathBuf) -> Result<bool, UiError> {
+        self.mode = UiMode::ConfirmDelete;
+        
+        self.terminal.draw(|f| {
+            let size = f.area();
+            
+            // Create a centered popup
+            let popup_area = centered_rect(60, 20, size);
+            
+            let text = vec![
+                Line::from(vec![
+                    Span::styled("Delete Confirmation", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("Are you sure you want to delete:"),
+                ]),
+                Line::from(vec![
+                    Span::styled(format!("{:?}", track), Style::default().fg(Color::Yellow)),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("y", Style::default().fg(Color::Green)),
+                    Span::raw(": Yes  "),
+                    Span::styled("n", Style::default().fg(Color::Red)),
+                    Span::raw(": No"),
+                ]),
+            ];
+            
+            let paragraph = Paragraph::new(text)
+                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Red)))
+                .wrap(Wrap { trim: true });
+            
+            f.render_widget(paragraph, popup_area);
+        })?;
+
+        // Wait for user input
         loop {
             if let Event::Key(KeyEvent { code, .. }) = event::read()? {
                 match code {
-                    KeyCode::Char('y') => return Ok(true),
-                    KeyCode::Char('n') => return Ok(false),
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        self.mode = UiMode::Normal;
+                        return Ok(true);
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        self.mode = UiMode::Normal;
+                        return Ok(false);
+                    }
                     _ => {}
                 }
             }
         }
     }
-    /// Affiche un formulaire d'édition des tags pour un fichier MP3.
-    /// Affiche le nom du fichier, les tags actuels, et permet de saisir de nouveaux tags (Entrée pour garder l'existant).
+
     pub fn edit_tags_form(
-        &self,
+        &mut self,
         track: &PathBuf,
         metadata: Option<&TrackMetadata>,
     ) -> Result<(Option<String>, Option<String>, Option<String>, Option<String>), UiError> {
-        use std::io::{stdin, Write};
-        use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-
-        // Désactive le raw mode pour la saisie utilisateur
-        disable_raw_mode()?;
-
-        // Nettoie l'écran et affiche le nom du feichier
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            crossterm::cursor::Show,
-            crossterm::cursor::MoveTo(0, 0),
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-        )?;
-        writeln!(stdout, "=== Edit MP3 Tags ===")?;
-        writeln!(stdout, "File: {}", track.display())?;
-        writeln!(stdout, "Leave blank and press Enter to keep the current value.")?;
-        writeln!(stdout)?;
-
-        // Récupère les valeurs actuelles
+        // Initialize edit state
         let (cur_artist, cur_album, cur_title, cur_year) = if let Some(m) = metadata {
             (
                 m.artist.as_deref().unwrap_or(""),
@@ -288,31 +396,109 @@ impl UI {
             ("", "", "", "")
         };
 
-        // Helper pour lire une ligne
-        fn read_line(prompt: &str, current: &str) -> io::Result<Option<String>> {
-            let mut stdout = io::stdout();
-            write!(stdout, "{} [{}]: ", prompt, current)?;
-            stdout.flush()?;
-            let mut input = String::new();
-            stdin().read_line(&mut input)?;
-            let input = input.trim_end();
-            if input.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(input.to_string()))
+        self.edit_state.fields = vec![
+            cur_artist.to_string(),
+            cur_album.to_string(),
+            cur_title.to_string(),
+            cur_year.to_string(),
+        ];
+        self.edit_state.current_field = 0;
+        self.mode = UiMode::EditingTags;
+
+        let original_values = self.edit_state.fields.clone();
+
+        loop {
+            // Draw the edit form
+            self.terminal.draw(|f| {
+                let size = f.area();
+                let popup_area = centered_rect(80, 60, size);
+
+                let mut text = vec![
+                    Line::from(vec![
+                        Span::styled("Edit MP3 Tags", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled(format!("File: {}", track.display()), Style::default().fg(Color::Yellow)),
+                    ]),
+                    Line::from(""),
+                    Line::from("Use ↑↓ to navigate, type to edit, Enter to confirm, Esc to cancel"),
+                    Line::from(""),
+                ];
+
+                for (idx, field_name) in self.edit_state.field_names.iter().enumerate() {
+                    let is_current = idx == self.edit_state.current_field;
+                    let field_value = &self.edit_state.fields[idx];
+                    
+                    let style = if is_current {
+                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+
+                    text.push(Line::from(vec![
+                        Span::styled(format!("{}: ", field_name), style),
+                        Span::styled(field_value.clone(), style),
+                        if is_current {
+                            Span::styled("█", Style::default().fg(Color::Green))
+                        } else {
+                            Span::raw("")
+                        },
+                    ]));
+                }
+
+                let paragraph = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan)))
+                    .wrap(Wrap { trim: true });
+
+                f.render_widget(paragraph, popup_area);
+            })?;
+
+            // Handle input
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Esc => {
+                        self.mode = UiMode::Normal;
+                        return Ok((None, None, None, None));
+                    }
+                    KeyCode::Enter => {
+                        self.mode = UiMode::Normal;
+                        let results = self.edit_state.fields.iter()
+                            .zip(original_values.iter())
+                            .map(|(new, old)| {
+                                if new != old && !new.is_empty() {
+                                    Some(new.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        return Ok((
+                            results[0].clone(),
+                            results[1].clone(),
+                            results[2].clone(),
+                            results[3].clone(),
+                        ));
+                    }
+                    KeyCode::Up => {
+                        if self.edit_state.current_field > 0 {
+                            self.edit_state.current_field -= 1;
+                        }
+                    }
+                    KeyCode::Down => {
+                        if self.edit_state.current_field < self.edit_state.fields.len() - 1 {
+                            self.edit_state.current_field += 1;
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        self.edit_state.fields[self.edit_state.current_field].push(c);
+                    }
+                    KeyCode::Backspace => {
+                        self.edit_state.fields[self.edit_state.current_field].pop();
+                    }
+                    _ => {}
+                }
             }
         }
-
-        // Saisie utilisateur
-        let artist = read_line("Artist", cur_artist)?;
-        let album = read_line("Album", cur_album)?;
-        let title = read_line("Title", cur_title)?;
-        let year = read_line("Year", cur_year)?;
-
-        // Réactive le raw mode avant de rendre la main à l'UI
-        enable_raw_mode()?;
-
-        Ok((artist, album, title, year))
     }
 }
 
@@ -321,4 +507,25 @@ impl Drop for UI {
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
     }
+}
+
+// Helper function to create centered rectangle
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
